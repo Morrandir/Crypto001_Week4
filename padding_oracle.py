@@ -58,6 +58,7 @@ class PaddingOracle(object):
                     print('Found!')
                     self.__plaintext[guess_index / 2] = chr(guess)
                     print self.__plaintext
+                    break
 
 
     def query(self, q):
