@@ -42,7 +42,7 @@ class PaddingOracle(object):
                 mask = format(pt_index ^ i ^ int(ct_index, 16), '02x')
                 query_trail += mask
 
-            for guess in range(32, 127):
+            for guess in range(1, 256):
                 print('.'),
 
                 query = self.__ciphertext[:guess_index]
@@ -59,6 +59,12 @@ class PaddingOracle(object):
                     self.__plaintext[guess_index / 2] = chr(guess)
                     print self.__plaintext
                     break
+
+                if 255 == guess:
+                    print('NOT found!')
+                    self.__plaintext[guess_index / 2] = '|'
+                    print self.__plaintext
+
 
 
     def query(self, q):
