@@ -11,60 +11,85 @@ TARGET = 'http://crypto-class.appspot.com/po?er='
 class PaddingOracle(object):
     __ciphertext = ''
     __plaintext = ''
-    # __len_CT = 0
-    # __len_PT = 0
     __padding = 0
     __block_size = BLOCK_SIZE
     __block_size_hex = BLOCK_SIZE * 2
     __blocks = 0
+    __guess_lower_bound = 1
+    __guess_upper_bound = 256
 
     def __init__(self):
         print('PaddingOracle initializing...')
 
+    def getPlaintext(self):
+        return self.__plaintext[:(self.__block_size * self.__blocks) - self.__padding]
 
-    def hack(self, cipher):
+    def decrypt(self, cipher):
         print('hacking...')
         self.__ciphertext = cipher
-        # self.__len_CT = len(cipher)
         self.__blocks = len(self.__ciphertext) / self.__block_size_hex
-        self.__plaintext = bytearray(len(self.__ciphertext) / 2 - self.__block_size)  # removing IV block
-        self.realPadding()
+        self.__plaintext = bytearray(self.__block_size * (self.__blocks - 1))  # removing IV block
 
-        for i in range(self.__padding + 1, len(self.__plaintext)):
-            guess_index = (len(self.__plaintext) - i) * 2  # note that IV needs to be considered
-            print('decrypting cipher character No. ' + str(guess_index / 2)),
+        for i in range(0, self.__blocks - 1):  # blocks - 1: no need to decrypt the first block (IV)
+            self.blockGuess(self.__blocks - i)
+
+
+    def blockGuess(self, iBlocks):
+
+        padding = 0
+
+        for i in range(0, self.__block_size):
+
+            if i < padding:
+                continue
+
+            guess_index = self.__block_size * (iBlocks - 1) - 1 - i
+            print('decrypting cipher character No. ' + str(guess_index) + ': '),
+            guess_index *= 2  # plain text is byte array but cipher text is hex array, the size ratio is 1:2
 
             query_trail = ''
 
-            for trail in range(1, i):
-                pt_index = self.__plaintext[guess_index / 2 + trail]
-                ct_index = self.__ciphertext[guess_index + trail * 2:guess_index + trail * 2 + 2]
-                mask = format(pt_index ^ i ^ int(ct_index, 16), '02x')
+            for iTrail in range(1, i + 1):
+                pt_index = self.__plaintext[guess_index / 2 + iTrail]
+                ct_index = self.__ciphertext[guess_index + iTrail * 2:guess_index + iTrail * 2 + 2]
+                mask = format(pt_index ^ (i + 1) ^ int(ct_index, 16), '02x')
                 query_trail += mask
 
-            for guess in range(1, 256):
-                print('.'),
+            for guess in range(self.__guess_lower_bound, self.__guess_upper_bound):
+                if 0 == guess % 32:
+                    print('\n.'),
+                else:
+                    print('.'),
 
                 query = self.__ciphertext[:guess_index]
 
                 ct_index = self.__ciphertext[guess_index:guess_index + 2]
-                mask = format(guess ^ i ^ int(ct_index, 16), '02x')
+                mask = format(guess ^ (i + 1) ^ int(ct_index, 16), '02x')
                 query += mask
 
                 query += query_trail
-                query += self.__ciphertext[guess_index + i * 2:]
+                query += self.__ciphertext[self.__block_size_hex * (iBlocks - 1):self.__block_size_hex * iBlocks]
 
                 if self.query(query):
-                    print('Found!')
-                    self.__plaintext[guess_index / 2] = chr(guess)
+                    if i != 0 or iBlocks != self.__blocks:
+                        print('Found!')
+                        self.__plaintext[guess_index / 2] = chr(guess)
+                    else:
+                        print('Found real padding: ' + str(guess))
+                        self.__plaintext[guess_index / 2] = chr(guess)
+                        for iPadding in range(guess_index / 2 - 1, guess_index / 2 - guess, -1):
+                            print('decrypting cipher character No. ' + str(iPadding) + ': real padding!')
+                            self.__plaintext[iPadding] = chr(guess)
+                        self.__padding = padding = guess
+                        self.__guess_lower_bound = 32
+                        self.__guess_upper_bound = 128  # chars between 32~127 are printable in ASCII table.
                     print self.__plaintext
                     break
 
-                if 255 == guess:
+                if self.__guess_upper_bound == guess:
                     print('NOT found!')
-                    self.__plaintext[guess_index / 2] = '|'
-                    print self.__plaintext
-
+                    print('Check your code, there must be something wrong...')
+                    return
 
 
     def query(self, q):
@@ -79,36 +104,8 @@ class PaddingOracle(object):
             return False  # bad padding
 
 
-    #--------------------------------------------------------------------------
-    # here we decide the real padding size in order to discard them
-    #--------------------------------------------------------------------------
-    def realPadding(self):
-        print('determining the real padding'),
-
-        guess_index = self.__block_size_hex * (
-            self.__blocks - 1) - 1  # we use the last char on the (n - 1)th block to help us guess the real padding
-
-        for guess in range(1, 17):
-            ct_index = self.__ciphertext[guess_index]
-            padding = format(guess ^ 1 ^ int(ct_index), '01x')
-            query = self.__ciphertext[:guess_index] + padding + self.__ciphertext[guess_index + 1:]
-            print('.'),
-            if self.query(query):
-                print('\nDone! Real padding is ' + str(guess))
-                self.__padding = guess
-                break
-                # else:
-                #     print('no good...')
-
-        for i in range(len(self.__plaintext) - self.__padding, len(self.__plaintext)):
-            self.__plaintext[i] = chr(self.__padding)
-
-
 if __name__ == "__main__":
     po = PaddingOracle()
-    po.hack(CT)
-
-
-
-
-
+    po.decrypt(CT)
+    plaint_text = po.getPlaintext()
+    print plaint_text
